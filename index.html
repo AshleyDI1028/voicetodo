@@ -40,7 +40,7 @@ header.top h1{font-size:20px;margin:0;display:flex;align-items:center;gap:6px}
 .ring i{display:block;height:100%;background:var(--accent);border-radius:4px;transition:width .4s}
 .composer textarea{min-height:78px}
 .comp-row{display:flex;gap:8px;margin-top:8px;align-items:center}
-.btn{background:var(--accent);color:#fff;border-radius:12px;padding:10px 16px;font-weight:700}
+.btn{background:var(--accent);color:#fff;border-radius:12px;padding:10px 16px;font-weight:700;white-space:nowrap}
 .btn.ghost{background:var(--warm);color:var(--brown)}
 .btn.danger{background:transparent;color:var(--red);border:1.5px solid var(--red)}
 .btn.small{padding:6px 10px;font-size:14px;border-radius:10px}
@@ -82,7 +82,7 @@ section.tab.on{display:block}
 .classcard .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
 .classcard .name{font-size:18px;font-weight:700}
 .row{display:flex;gap:8px;padding:7px 0;border-top:1px dashed var(--line);align-items:flex-start}
-.row .k{flex:none;width:52px;font-size:13px;font-weight:700;padding-top:2px}
+.row .k{flex:none;width:56px;font-size:13px;font-weight:700;padding-top:2px}
 .row .v{flex:1;min-width:0}
 .row .v .e{display:flex;gap:6px;align-items:flex-start;margin-bottom:4px}
 .row .v .e .tt{flex:1;cursor:pointer;line-height:1.4}
@@ -162,10 +162,10 @@ a{color:var(--accent)}
 <section class="tab wrap" id="tab-classes">
   <div class="card composer">
     <div class="picker" id="classPicker"></div>
-    <textarea id="classInput" rows="2" placeholder="例：今天上到第三課，下週三考第三課單字，小明、小華要補考第二課，週五前收學習單訂正"></textarea>
+    <textarea id="classInput" rows="2" placeholder="例：今天上到第三課，下週三考第三課單字，第二課學習單沒交的有小明、小華，阿哲要補考第二課"></textarea>
     <div class="comp-row">
       <button class="mic" id="micClass" hidden aria-label="語音輸入">🎙️</button>
-      <div class="hint" style="flex:1">進度・考試・補考・訂正，一次說完會自動分好</div>
+      <div class="hint" style="flex:1">進度・考試・缺交・訂正・補考，一次說完會自動分好</div>
       <button class="btn" id="addClass">記下</button>
     </div>
     <div class="preview" id="classPreview"></div>
@@ -180,7 +180,7 @@ a{color:var(--accent)}
       <input id="stuInput" placeholder="新增學生（多位用、分開）">
       <button class="btn" id="addStu">新增</button>
     </div>
-    <div class="hint" style="margin-top:6px">待辦裡提到名字（例：「明天約小明晤談」）會自動歸到這位學生</div>
+    <div class="hint" style="margin-top:6px">點學生可以記晤談紀錄、看缺交，也能一鍵產出晤談紀錄</div>
   </div>
   <div id="stuList"></div>
 </section>
@@ -228,8 +228,8 @@ function dayLabel(k, withWord = true) {
 }
 
 /* ========== 資料 ========== */
-const KINDS = ["tasks", "rules", "classes", "entries", "students", "meta"];
-let D = { tasks:{}, rules:{}, classes:{}, entries:{}, students:{}, meta:{} };
+const KINDS = ["tasks", "rules", "classes", "entries", "students", "sessions", "meta"];
+let D = { tasks:{}, rules:{}, classes:{}, entries:{}, students:{}, sessions:{}, meta:{} };
 const LS = "voicetodo_web_v1";
 const DEFAULT_PERIODS = [[490,540],[550,600],[610,660],[670,720],[790,840],[850,900],[910,960],[970,1020]];
 const CLASS_COLORS = ["#D9782E","#3B7FD0","#4E9A5B","#8A5CC7","#D9443A","#C9A227"];
@@ -507,8 +507,10 @@ const KIND = {
   progress:   { label: "進度", icon: "📖", color: "var(--accent)", dateLabel: "上課日期", ph: "上到哪裡，例如：第三課、課本 p.45" },
   exam:       { label: "考試", icon: "📝", color: "var(--red)",    dateLabel: "考試日期", ph: "要考什麼，例如：第三課小考" },
   makeup:     { label: "補考", icon: "🔁", color: "var(--purple)", dateLabel: "補考日期", ph: "補考什麼" },
-  correction: { label: "訂正", icon: "📥", color: "var(--blue)",   dateLabel: "收回期限", ph: "要收什麼，例如：第二次小考訂正" }
+  correction: { label: "訂正", icon: "📥", color: "var(--blue)",   dateLabel: "收回期限", ph: "要收什麼，例如：第二次小考訂正" },
+  homework:   { label: "缺交", icon: "📚", color: "#B8860B",       dateLabel: "繳交期限", ph: "什麼作業，例如：第三課學習單" }
 };
+const MISSING_KINDS = ["homework", "correction", "makeup"];
 function namesFrom(text) {
   let t = text;
   for (const w of ["還有","以及","同學們","同學","這幾位","這些人"]) t = t.split(w).join("、");
@@ -518,7 +520,9 @@ function namesFrom(text) {
 }
 function detectKind(t) {
   if (t.includes("補考")) return "makeup";
-  if (["訂正","收回","繳交","交回","收"].some(w => t.includes(w))) return "correction";
+  if (t.includes("訂正")) return "correction";
+  if (["作業","缺交","學習單","沒交","未交","遲交"].some(w => t.includes(w))) return "homework";
+  if (["收回","繳交","交回","收"].some(w => t.includes(w))) return "correction";
   if (["上到","教到","講到","上完","進度"].some(w => t.includes(w))) return "progress";
   if (["考","測驗"].some(w => t.includes(w))) return "exam";
   return null;
@@ -542,8 +546,8 @@ function parseClass(text) {
     if (!kind) {
       const next = i + 1 < frags.length ? detectKind(frags[i + 1]) : null;
       const last = merged[merged.length - 1];
-      if (fr.length <= 6 && (next === "makeup" || next === "correction")) pending.push(fr);
-      else if (last && (last.kind === "makeup" || last.kind === "correction")) last.text += "、" + fr;
+      if (fr.length <= 6 && ["makeup","correction","homework"].includes(next)) pending.push(fr);
+      else if (last && ["makeup","correction","homework"].includes(last.kind)) last.text += "、" + fr;
       else merged.push({ kind: null, text: fr });
       return;
     }
@@ -565,6 +569,16 @@ function buildEntry(kind, text) {
     if (m) { students = namesFrom(m[1] || ""); title = title.slice(0, m.index) + title.slice(m.index + m[0].length); }
     title = stripP(title, ["要收","收回","收","繳交"]);
     if (!title) title = "訂正";
+  } else if (kind === "homework") {
+    let m = /(?:還沒交的有|還沒交的是|缺交的有|缺交的是|沒交的有|沒交的是|遲交的有)[：:]?(.*)$/.exec(title);
+    if (m) { students = namesFrom(m[1] || ""); title = title.slice(0, m.index); }
+    else if ((m = /^(.+?)(?:都)?(?:還沒交|沒有交|沒交|缺交|未交|遲交)(.*)$/.exec(title))) {
+      const who = namesFrom(m[1]);
+      if (who.length && who.every(n => n.length <= 4)) { students = who; title = m[2] || ""; }
+      else { title = m[1] + (m[2] || ""); }
+    }
+    title = stripP(title.replace(/(還沒交|沒交|缺交|未交)$/, ""), ["的","要收","收","繳交","交"]);
+    if (!title) title = "作業";
   } else if (kind === "progress") {
     title = stripP(title, ["今天","已經","上到","教到","講到","進度到","進度","上完"]);
   } else {
@@ -745,12 +759,13 @@ function renderClasses() {
     };
     const block = (kind) => { const l = sec(kind); return `<div class="row"><div class="k" style="color:${KIND[kind].color}">${KIND[kind].icon} ${KIND[kind].label}</div><div class="v">${l.length ? l.map(entryLine).join("") : `<span class="mini">—</span>`}</div></div>`; };
     h += `<div class="card classcard" style="border-left-color:${c.color || "var(--accent)"}">
-      <div class="head"><span class="name">${esc(c.name)}</span><span><button class="btn ghost small" data-classlog="${c.id}">紀錄</button> <button class="btn ghost small" data-classedit="${c.id}">✏️</button></span></div>
+      <div class="head"><span class="name">${esc(c.name)}</span><span><button class="btn ghost small" data-missing="${c.id}">📋 缺交</button> <button class="btn ghost small" data-classlog="${c.id}">紀錄</button> <button class="btn ghost small" data-classedit="${c.id}">✏️</button></span></div>
       <div class="row"><div class="k" style="color:var(--accent)">📖 進度</div><div class="v">${prog ? `<div class="e"><div class="tt" data-entry="${prog.id}">${esc(prog.title)} <span class="mini">${esc(dayLabel(prog.day))}</span></div></div>` : `<span class="mini">還沒記錄</span>`}</div></div>
-      ${block("exam")}${block("makeup")}${block("correction")}
+      ${block("exam")}${block("homework")}${block("correction")}${block("makeup")}
     </div>`;
   }
-  h += `<button class="btn ghost" style="width:100%;margin-top:6px" data-act="addclass">＋ 新增班級</button>`;
+  h += `<button class="btn ghost" style="width:100%;margin-top:6px" data-missing="all">📋 全部班級缺交／補考名單</button>`;
+  h += `<button class="btn ghost" style="width:100%;margin-top:8px" data-act="addclass">＋ 新增班級</button>`;
   h += `<p class="hint" style="text-align:center">點學生名字＝那位已補考／已交（會劃掉）</p>`;
   $("#classList").innerHTML = h;
 }
@@ -762,16 +777,171 @@ function updateClassPreview() {
 }
 
 /* 學生 */
+const sessions = () => Object.values(D.sessions);
+function missingFor(name) {
+  return Object.values(D.entries).filter(e => MISSING_KINDS.includes(e.kind) && !e.done && (e.students || []).includes(name) && !(e.doneStudents || []).includes(name));
+}
 function renderStudents() {
-  const studs = Object.values(D.students).sort((a, b) => a.name.localeCompare(b.name, "zh-Hant"));
-  if (!studs.length) { $("#stuList").innerHTML = emptyBox("curious", "還沒有學生。新增後，待辦裡提到名字會自動歸類。"); return; }
-  $("#stuList").innerHTML = `<div class="card">${studs.map(s => {
+  const studs = Object.values(D.students).sort((a, b) => (a.cls || "").localeCompare(b.cls || "", "zh-Hant") || (a.seat || 99) - (b.seat || 99) || a.name.localeCompare(b.name, "zh-Hant"));
+  if (!studs.length) { $("#stuList").innerHTML = emptyBox("curious", "還沒有學生。新增後，待辦裡提到名字會自動歸類，也可以記晤談紀錄。"); return; }
+  let h = `<div class="two" style="margin-bottom:4px"><button class="btn ghost" data-act="allrecords">📄 晤談紀錄總表</button><button class="btn ghost" data-missing="all">📚 缺交總覽</button></div>`;
+  h += `<div class="card">${studs.map(s => {
     const open = tasks().filter(t => t.student === s.name && !t.done).length;
-    const ent = Object.values(D.entries).filter(e => !e.done && (e.students || []).includes(s.name) && !(e.doneStudents || []).includes(s.name)).length;
-    const last = tasks().filter(t => t.student === s.name).sort((a, b) => b.day.localeCompare(a.day))[0];
-    return `<div class="item"><div class="body" data-student="${s.id}"><div class="t"><b>${esc(s.name)}</b></div>
-      <div>${open ? `<span class="chip time">${open} 件待辦</span>` : ""}${ent ? `<span class="chip stu">${ent} 項補考/訂正</span>` : ""}${last ? `<span class="chip">最近：${esc(dayLabel(last.day, false))}</span>` : ""}${s.note ? `<span class="chip">📝</span>` : ""}</div></div></div>`;
+    const miss = missingFor(s.name).length;
+    const ss = sessions().filter(x => x.studentId === s.id).sort((a, b) => b.day.localeCompare(a.day));
+    return `<div class="item"><div class="body" data-student="${s.id}"><div class="t"><b>${esc(s.name)}</b> ${s.cls ? `<span class="mini">${esc(s.cls)}${s.seat ? " " + esc(s.seat) + "號" : ""}</span>` : ""}</div>
+      <div>${ss.length ? `<span class="chip rep">💬 晤談 ${ss.length} 次・最近 ${esc(dayLabel(ss[0].day, false))}</span>` : ""}${miss ? `<span class="chip dl">📚 缺交/補考 ${miss}</span>` : ""}${open ? `<span class="chip time">${open} 件待辦</span>` : ""}${s.note ? `<span class="chip">📝</span>` : ""}</div></div></div>`;
   }).join("")}</div>`;
+  $("#stuList").innerHTML = h;
+}
+
+/* 晤談紀錄 */
+const SESSION_MODES = ["個別晤談", "團體晤談", "家長晤談", "電話聯繫", "導師諮詢", "其他"];
+const SESSION_TOPICS = ["學業", "人際", "情緒", "家庭", "生涯", "行為", "生活適應", "身心健康", "其他"];
+function toPoints(text) {
+  return String(text || "").split(/\n|。|！|？|；|!|\?|;|然後|另外/).map(x => x.replace(/^\s*([・•\-*‧◆●]|\d+[.、)）])\s*/, "").trim()).filter(x => x.length > 0);
+}
+function rocDate(k) { const d = parseKey(k); return `${d.getFullYear() - 1911}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}（${WD[d.getDay()]}）`; }
+function rocCompact(k) { const d = parseKey(k); return `${d.getFullYear() - 1911}${pad(d.getMonth() + 1)}${pad(d.getDate())}`; }
+
+function openSession(sid, sessId) {
+  const st = D.students[sid]; if (!st) return;
+  const x = sessId ? D.sessions[sessId] : null;
+  const topics = new Set(x ? x.topics || [] : []);
+  const lines = arr => (arr || []).join("\n");
+  openSheet(`<h3>💬 ${x ? "編輯" : "新增"}晤談：${esc(st.name)} <button class="iconbtn" id="x">✕</button></h3>
+    <div class="two"><div class="field"><label>日期</label><input type="date" id="wDay" value="${x ? x.day : todayKey()}"></div>
+    <div class="field"><label>時間（可空白）</label><input type="time" id="wTime" value="${x ? toHHMM(x.time) : ""}"></div></div>
+    <div class="field"><label>方式</label><div class="tagpick" id="wMode">${SESSION_MODES.map(m => `<button class="${(x ? x.mode : "個別晤談") === m ? "on" : ""}" data-m="${m}">${m}</button>`).join("")}</div></div>
+    <div class="field"><label>議題（可複選）</label><div class="tagpick" id="wTopics">${SESSION_TOPICS.map(t => `<button class="${topics.has(t) ? "on" : ""}" data-t="${t}">${t}</button>`).join("")}</div></div>
+    <div class="field"><label>晤談內容（一行一點；用說的也可以，按「整理成列點」會自動分行）</label><textarea id="wPoints" rows="5" placeholder="例：最近和同學吵架，覺得被排擠。上課常分心，晚上睡不好。">${esc(lines(x && x.points))}</textarea>
+      <button class="btn ghost small" style="margin-top:6px" data-tidy="wPoints">✨ 整理成列點</button></div>
+    <div class="field"><label>處遇／輔導策略</label><textarea id="wActions" rows="3" placeholder="例：引導覺察情緒、練習我訊息表達">${esc(lines(x && x.actions))}</textarea>
+      <button class="btn ghost small" style="margin-top:6px" data-tidy="wActions">✨ 整理成列點</button></div>
+    <div class="field"><label>後續追蹤</label><textarea id="wFollow" rows="3" placeholder="例：聯繫導師了解班上互動、一週後再約談">${esc(lines(x && x.follow))}</textarea>
+      <button class="btn ghost small" style="margin-top:6px" data-tidy="wFollow">✨ 整理成列點</button></div>
+    <div class="field"><label>下次晤談（選了會自動加到待辦）</label><input type="date" id="wNext" value="${x && x.next ? x.next : ""}"></div>
+    <button class="btn" style="width:100%" id="wSave">儲存晤談紀錄</button>
+    ${x ? `<div class="two" style="margin-top:10px"><button class="btn ghost" id="wOut">📄 產出這次紀錄</button><button class="btn danger" id="wDel">刪除</button></div>` : ""}
+    <button class="btn ghost" style="width:100%;margin-top:10px" id="wBack">← 回到 ${esc(st.name)}</button>`);
+  $("#x").onclick = closeSheet;
+  $("#wBack").onclick = () => openStudent(sid);
+  let mode = x ? x.mode : "個別晤談";
+  $("#wMode").onclick = e => { const b = e.target.closest("button"); if (!b) return; mode = b.dataset.m; document.querySelectorAll("#wMode button").forEach(z => z.classList.toggle("on", z === b)); };
+  $("#wTopics").onclick = e => { const b = e.target.closest("button"); if (b) b.classList.toggle("on"); };
+  document.querySelectorAll("[data-tidy]").forEach(b => b.onclick = () => { const ta = $("#" + b.dataset.tidy); ta.value = toPoints(ta.value).join("\n"); });
+  $("#wSave").onclick = () => {
+    const obj = Object.assign({}, x || { id: "w" + uid(), studentId: sid, createdAt: Date.now() }, {
+      day: $("#wDay").value || todayKey(), time: toMin($("#wTime").value), mode,
+      topics: [...document.querySelectorAll("#wTopics button.on")].map(b => b.dataset.t),
+      points: toPoints($("#wPoints").value), actions: toPoints($("#wActions").value), follow: toPoints($("#wFollow").value),
+      next: $("#wNext").value || "", updatedAt: Date.now()
+    });
+    if (!obj.points.length && !obj.actions.length && !obj.follow.length) { toast("先寫一點晤談內容", "worried"); return; }
+    put("sessions", obj);
+    if (obj.next && (!x || x.next !== obj.next)) {
+      put("tasks", { id: "t" + uid(), title: `與${st.name}晤談`, day: obj.next, time: null, deadline: false, tags: ["個案"], student: st.name, done: false, doneAt: null, createdAt: Date.now(), ruleId: null, note: "" });
+    }
+    toast("晤談紀錄存好了", "guard");
+    openStudent(sid);
+  };
+  if (x) {
+    $("#wOut").onclick = () => openRecord({ title: `${st.name} 晤談紀錄（${rocDate(x.day)}）`, text: recordText([st], [x]), file: `晤談紀錄_${st.name}_${rocCompact(x.day)}` }, () => openSession(sid, sessId));
+    $("#wDel").onclick = async () => { if (await ask("刪除這筆晤談紀錄？", "刪除")) { del("sessions", x.id); openStudent(sid); } };
+  }
+}
+
+function sessionBlock(x, n) {
+  const sec = (label, arr) => arr && arr.length ? `◆ ${label}\n${arr.map(p => "・" + p).join("\n")}\n` : "";
+  return `${n ? n + "、" : ""}${rocDate(x.day)}${x.time != null ? " " + fmtTime(x.time) : ""}｜${x.mode || "晤談"}${x.topics && x.topics.length ? "｜議題：" + x.topics.join("、") : ""}\n`
+    + sec("晤談內容", x.points) + sec("處遇／輔導策略", x.actions) + sec("後續追蹤", x.follow)
+    + (x.next ? `◆ 下次晤談：${rocDate(x.next)}\n` : "");
+}
+function recordText(studs, onlySessions, range) {
+  const out = [];
+  for (const st of studs) {
+    let list = onlySessions || sessions().filter(x => x.studentId === st.id);
+    if (range) list = list.filter(x => x.day >= range);
+    list = list.slice().sort((a, b) => a.day.localeCompare(b.day));
+    if (!list.length && studs.length > 1) continue;
+    out.push(`【學生晤談紀錄】`);
+    out.push(`學生：${st.name}${st.cls ? "　班級：" + st.cls : ""}${st.seat ? "　座號：" + st.seat : ""}`);
+    if (list.length > 1) out.push(`期間：${rocDate(list[0].day)} ～ ${rocDate(list[list.length - 1].day)}　共 ${list.length} 次`);
+    out.push("");
+    list.forEach((x, i) => { out.push(sessionBlock(x, list.length > 1 ? "一二三四五六七八九十".split("")[i] || String(i + 1) : "")); });
+    const miss = missingFor(st.name);
+    if (miss.length && !onlySessions) {
+      out.push("◆ 目前缺交／待補考");
+      miss.forEach(e => out.push(`・${D.classes[e.classId] ? D.classes[e.classId].name + " " : ""}${KIND[e.kind].label}：${e.title}${e.day ? "（" + rocDate(e.day) + "）" : ""}`));
+      out.push("");
+    }
+    out.push(`紀錄人：${S().name}　產出日期：${rocDate(todayKey())}`);
+    out.push("");
+  }
+  return out.join("\n").trim() || "目前沒有晤談紀錄。";
+}
+
+/* 缺交名單 */
+function missingText(classId) {
+  const cs = classId === "all" ? classes() : [D.classes[classId]].filter(Boolean);
+  const lines = [`【作業缺交／補考名單】${rocDate(todayKey())}`];
+  let any = false;
+  for (const c of cs) {
+    const ents = Object.values(D.entries).filter(e => e.classId === c.id && MISSING_KINDS.includes(e.kind) && !e.done).sort((a, b) => (a.day || "").localeCompare(b.day || ""));
+    const rows = ents.map(e => {
+      const left = (e.students || []).filter(n => !(e.doneStudents || []).includes(n));
+      return `・${KIND[e.kind].label}｜${e.title}${e.day ? "（期限 " + dayLabel(e.day, false) + "）" : ""}${left.length ? "：" + left.join("、") : ""}`;
+    });
+    if (!rows.length) continue;
+    any = true;
+    lines.push("", `▍${c.name}`, ...rows);
+  }
+  if (!any) lines.push("", "目前沒有缺交或待補考 🎉");
+  return lines.join("\n");
+}
+
+/* 產出／複製／分享／下載 */
+function openRecord(o, back) {
+  openSheet(`<h3>📄 ${esc(o.title)} <button class="iconbtn" id="x">✕</button></h3>
+    <textarea id="rText" rows="14" style="font-size:14px;line-height:1.6">${esc(o.text)}</textarea>
+    <div class="hint" style="margin:6px 0 10px">可以直接在上面修改文字，再複製或分享。</div>
+    <div class="two"><button class="btn" id="rCopy">📋 複製文字</button><button class="btn ghost" id="rShare">📤 分享（LINE 等）</button></div>
+    <button class="btn ghost" style="width:100%;margin-top:10px" id="rWord">💾 下載 Word 檔</button>
+    ${back ? `<button class="btn ghost" style="width:100%;margin-top:10px" id="rBack">← 返回</button>` : ""}`);
+  $("#x").onclick = closeSheet;
+  if (back) $("#rBack").onclick = back;
+  $("#rCopy").onclick = () => copyText($("#rText").value, "已複製，可以貼到 LINE 了");
+  $("#rShare").onclick = () => shareText($("#rText").value);
+  $("#rWord").onclick = () => downloadWord($("#rText").value, o.file || o.title);
+}
+async function shareText(text) {
+  if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e && e.name === "AbortError") return; } }
+  copyText(text, "已複製（這個瀏覽器不能直接分享，請貼到 LINE）");
+}
+function wordBlob(text) {
+  const body = esc(text).split("\n").map(l => {
+    if (/^【.*】$/.test(l)) return `<h2 style="font-size:16pt;text-align:center">${l}</h2>`;
+    if (/^[一二三四五六七八九十]+、/.test(l) || /^\d{3}\/\d\d\/\d\d/.test(l)) return `<p style="font-weight:bold;margin-top:12pt;border-bottom:1px solid #999">${l}</p>`;
+    if (/^◆/.test(l)) return `<p style="font-weight:bold;margin:6pt 0 2pt">${l}</p>`;
+    if (/^▍/.test(l)) return `<p style="font-weight:bold;margin-top:10pt">${l}</p>`;
+    return l ? `<p style="margin:0 0 2pt 0">${l}</p>` : "<p>&nbsp;</p>";
+  }).join("");
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><title>紀錄</title></head><body style="font-family:'標楷體','DFKai-SB','PingFang TC',serif;font-size:12pt">${body}</body></html>`;
+  return new Blob(["﻿", html], { type: "application/msword" });
+}
+async function downloadWord(text, name) {
+  const fname = (name || "紀錄").replace(/[\\/:*?"<>|（）() ]/g, "_") + ".doc";
+  const blob = wordBlob(text);
+  try {
+    const file = new File([blob], fname, { type: "application/msword" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: fname }); return; }
+  } catch (e) { if (e && e.name === "AbortError") return; }
+  try {
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = fname;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast("Word 檔已下載", "proud");
+  } catch (e) { toast("這裡不能下載，請用「複製文字」", "worried"); }
 }
 
 /* 回顧 */
@@ -799,7 +969,7 @@ function renderReview() {
   const recent = tasks().filter(t => t.done && t.doneAt && Date.now() - t.doneAt < 7 * 864e5).sort((a, b) => b.doneAt - a.doneAt);
   const ents = Object.values(D.entries).filter(e => e.day >= r.ss);
   let h = `<div class="card greet"><img src="${img(sDone > 20 ? "proud" : "thinking")}" alt=""><div><div class="big">回顧</div><div class="sub">這學期（${esc(dayLabel(r.ss, false))} 起）已完成 <b>${sDone}</b> 件事</div></div></div>`;
-  h += `<div class="card"><div class="stat"><div><b>${wDone}</b><span>本週完成</span></div><div><b>${r.week.length - wDone}</b><span>本週未完成</span></div><div><b>${sDone}</b><span>本學期完成</span></div></div></div>`;
+  h += `<div class="card"><div class="stat"><div><b>${wDone}</b><span>本週完成</span></div><div><b>${r.week.length - wDone}</b><span>本週未完成</span></div><div><b>${sDone}</b><span>本學期完成</span></div><div><b>${sessions().filter(x => x.day >= r.ss).length}</b><span>本學期晤談</span></div></div></div>`;
   h += `<h2 class="sec">本學期完成的分類</h2><div class="card">${tags.length ? tags.map(([g, n]) => `<div class="bar"><span class="lab">${esc(g)}</span><span class="track"><i style="width:${n / max * 100}%"></i></span><b>${n}</b></div>`).join("") : `<span class="mini">還沒有完成的事項</span>`}</div>`;
   if (classes().length) h += `<h2 class="sec">班級紀錄（本學期）</h2><div class="card">${classes().map(c => { const e = ents.filter(x => x.classId === c.id); return `<div class="bar"><span class="lab" style="width:auto;flex:1">${esc(c.name)}</span><span class="mini">進度 ${e.filter(x => x.kind === "progress").length}・考試 ${e.filter(x => x.kind === "exam").length}・補考 ${e.filter(x => x.kind === "makeup").length}・訂正 ${e.filter(x => x.kind === "correction").length}</span></div>`; }).join("")}</div>`;
   h += `<div class="two" style="margin-top:10px"><button class="btn ghost" data-act="copyweek">📋 複製本週回顧</button><button class="btn ghost" data-act="copysem">📋 複製學期報告</button></div>`;
@@ -817,6 +987,7 @@ function reportText(kind) {
   } else {
     lines.push(`【學期工作報告】${dayLabel(r.ss, false)} 起`);
     lines.push(`完成事項共 ${r.sem.filter(t => t.done).length} 件`);
+    lines.push(`學生晤談共 ${sessions().filter(x => x.day >= r.ss).length} 次（${new Set(sessions().filter(x => x.day >= r.ss).map(x => x.studentId)).size} 位學生）`);
     Object.entries(r.tagCount).sort((a, b) => b[1] - a[1]).forEach(([g, n]) => lines.push(`・${g}：${n} 件`));
     for (const c of classes()) {
       const e = Object.values(D.entries).filter(x => x.classId === c.id && x.day >= r.ss).sort((a, b) => a.day.localeCompare(b.day));
@@ -955,32 +1126,64 @@ function openClassEdit(cid) {
 function openStudent(sid) {
   const s = D.students[sid]; if (!s) return;
   const ts = tasks().filter(t => t.student === s.name).sort((a, b) => b.day.localeCompare(a.day));
-  const es = Object.values(D.entries).filter(e => (e.students || []).includes(s.name));
-  openSheet(`<h3>🧑‍🎓 ${esc(s.name)} <button class="iconbtn" id="x">✕</button></h3>
-    <div class="field"><label>備註（自動儲存）</label><textarea id="sNote" rows="3" placeholder="例：家長聯絡方式、晤談重點">${esc(s.note || "")}</textarea></div>
+  const miss = missingFor(s.name);
+  const ss = sessions().filter(x => x.studentId === sid).sort((a, b) => b.day.localeCompare(a.day) || (b.createdAt || 0) - (a.createdAt || 0));
+  openSheet(`<h3>🧑‍🎓 ${esc(s.name)} ${s.cls ? `<span class="mini" style="flex:1;margin-left:8px">${esc(s.cls)}${s.seat ? " " + esc(s.seat) + "號" : ""}</span>` : ""}<button class="iconbtn" id="x">✕</button></h3>
+    <div class="two"><button class="btn" id="sAdd">＋ 新增晤談</button><button class="btn ghost" id="sOut">📄 產出晤談紀錄</button></div>
+    <h2 class="sec">💬 晤談紀錄 <span class="n">${ss.length} 次</span></h2>
+    <div class="card">${ss.length ? ss.map(x => `<div class="item"><div class="body" data-session="${x.id}" data-sid="${sid}">
+        <div class="t"><b>${esc(rocDate(x.day))}</b> <span class="mini">${esc(x.mode || "")}</span></div>
+        <div>${(x.topics || []).map(t => `<span class="chip rep">${esc(t)}</span>`).join("")}</div>
+        <div class="mini" style="margin-top:4px;line-height:1.5">${(x.points || []).slice(0, 3).map(p => "・" + esc(p)).join("<br>")}${(x.points || []).length > 3 ? "<br>…" : ""}</div></div></div>`).join("") : `<span class="mini">還沒有晤談紀錄，按「＋ 新增晤談」開始</span>`}</div>
+    <h2 class="sec">📚 缺交／待補考 <span class="n">${miss.length}</span></h2>
+    <div class="card">${miss.length ? miss.map(e => `<div class="item"><div class="body"><div class="t">${KIND[e.kind].icon} ${esc(D.classes[e.classId] ? D.classes[e.classId].name : "")} ${KIND[e.kind].label}：${esc(e.title)}</div><div class="mini">${e.day ? esc(dayLabel(e.day)) : ""}</div></div>
+        <button class="okbtn" data-handin="${e.id}" data-name="${esc(s.name)}" data-sid="${sid}">已交</button></div>`).join("") : `<span class="mini">沒有缺交 👍</span>`}</div>
     <h2 class="sec">相關待辦 <span class="n">${ts.length}</span></h2>
     <div class="card">${ts.length ? ts.map(t => taskRow(t, { showDay: true })).join("") : `<span class="mini">沒有</span>`}</div>
-    ${es.length ? `<h2 class="sec">補考／訂正</h2><div class="card">${es.map(e => `<div class="item ${(e.done || (e.doneStudents || []).includes(s.name)) ? "done" : ""}"><div class="body"><div class="t">${KIND[e.kind].icon} ${esc(D.classes[e.classId] ? D.classes[e.classId].name : "")} ${esc(e.title)}</div><div class="mini">${esc(dayLabel(e.day, false))}</div></div></div>`).join("")}</div>` : ""}
-    <div class="two" style="margin-top:12px"><button class="btn ghost" id="sRen">改名</button><button class="btn danger" id="sDel">刪除學生</button></div>`);
+    <div class="field" style="margin-top:12px"><label>備註（自動儲存，例如家長聯絡方式）</label><textarea id="sNote" rows="3">${esc(s.note || "")}</textarea></div>
+    <div class="two" style="margin-top:12px"><button class="btn ghost" id="sRen">✏️ 編輯資料</button><button class="btn danger" id="sDel">刪除學生</button></div>`);
   $("#x").onclick = closeSheet;
+  $("#sAdd").onclick = () => openSession(sid);
+  $("#sOut").onclick = () => {
+    const ssem = dkey(semesterStart());
+    openSheet(`<h3>📄 產出 ${esc(s.name)} 的晤談紀錄 <button class="iconbtn" id="x">✕</button></h3>
+      <button class="btn" style="width:100%;margin-bottom:10px" id="o1">全部紀錄（${ss.length} 次）</button>
+      <button class="btn ghost" style="width:100%;margin-bottom:10px" id="o2">本學期（${ss.filter(x => x.day >= ssem).length} 次）</button>
+      ${ss[0] ? `<button class="btn ghost" style="width:100%;margin-bottom:10px" id="o3">只有最近一次（${esc(rocDate(ss[0].day))}）</button>` : ""}
+      <button class="btn ghost" style="width:100%" id="oBack">← 返回</button>`);
+    $("#x").onclick = closeSheet; $("#oBack").onclick = () => openStudent(sid);
+    const back = () => openStudent(sid);
+    $("#o1").onclick = () => openRecord({ title: `${s.name} 晤談紀錄`, text: recordText([s]), file: `晤談紀錄_${s.name}` }, back);
+    $("#o2").onclick = () => openRecord({ title: `${s.name} 本學期晤談紀錄`, text: recordText([s], null, ssem), file: `晤談紀錄_${s.name}_本學期` }, back);
+    if (ss[0]) $("#o3").onclick = () => openRecord({ title: `${s.name} 晤談紀錄`, text: recordText([s], [ss[0]]), file: `晤談紀錄_${s.name}_${rocCompact(ss[0].day)}` }, back);
+  };
   $("#sNote").onblur = () => { const v = $("#sNote").value.trim(); if (v !== (s.note || "")) put("students", Object.assign({}, D.students[sid], { note: v })); };
   $("#sRen").onclick = () => {
-    openSheet(`<h3>改名</h3><div class="field"><input id="rn" value="${esc(s.name)}"></div><div class="two"><button class="btn ghost" id="rnNo">取消</button><button class="btn" id="rnOk">儲存</button></div>`);
+    openSheet(`<h3>編輯學生資料</h3>
+      <div class="field"><label>姓名</label><input id="rn" value="${esc(s.name)}"></div>
+      <div class="two"><div class="field"><label>班級</label><input id="rc" list="clsNames" value="${esc(s.cls || "")}" placeholder="例：201"><datalist id="clsNames">${classes().map(c => `<option value="${esc(c.name)}">`).join("")}</datalist></div>
+      <div class="field"><label>座號</label><input id="rs" type="number" value="${esc(s.seat || "")}"></div></div>
+      <div class="two"><button class="btn ghost" id="rnNo">取消</button><button class="btn" id="rnOk">儲存</button></div>`);
     $("#rnNo").onclick = () => openStudent(sid);
     $("#rnOk").onclick = () => {
       const n = $("#rn").value.trim(); if (!n) return;
-      for (const t of tasks()) if (t.student === s.name) put("tasks", Object.assign({}, t, { student: n }));
-      put("students", Object.assign({}, s, { name: n })); openStudent(sid);
+      if (n !== s.name) {
+        for (const t of tasks()) if (t.student === s.name) put("tasks", Object.assign({}, t, { student: n }));
+        for (const e of Object.values(D.entries)) if ((e.students || []).includes(s.name)) put("entries", Object.assign({}, e, { students: e.students.map(x => x === s.name ? n : x), doneStudents: (e.doneStudents || []).map(x => x === s.name ? n : x) }));
+      }
+      put("students", Object.assign({}, s, { name: n, cls: $("#rc").value.trim(), seat: $("#rs").value.trim() })); openStudent(sid);
     };
   };
-  $("#sDel").onclick = async () => { if (await ask(`刪除學生「${s.name}」？（待辦會保留）`, "刪除")) del("students", sid); };
+  $("#sDel").onclick = async () => {
+    if (!(await ask(`刪除學生「${s.name}」和他的 ${ss.length} 筆晤談紀錄？（待辦會保留）`, "刪除"))) return;
+    ss.forEach(x => del("sessions", x.id)); del("students", sid);
+  };
 }
-
 function openSettings() {
   const s = S();
   const rules = Object.values(D.rules);
   const cloudLine = cloudState === "cloud" ? "☁️ 已存到你的 Claude 帳號，換手機登入同一個帳號也看得到。"
-    : cloudState === "local" ? "📱 資料存在這支手機裡（不會上傳到任何地方）。刪掉主畫面圖示或清除 Safari 資料會不見，建議每週按「複製備份」貼到備忘錄存著。" : "☁️ 連線中…";
+    : cloudState === "local" ? "📱 資料存在這支手機裡（不會上傳到任何地方，晤談紀錄也一樣）。刪掉主畫面圖示或清除 Safari 資料會不見，建議每週按「複製備份」貼到備忘錄存著。" : "☁️ 連線中…";
   openSheet(`<h3>設定 <button class="iconbtn" id="x">✕</button></h3>
     <div class="field"><label>怎麼稱呼你</label><input id="sName" value="${esc(s.name)}"></div>
     <div class="field"><label>咪咪圖片風格</label><div class="styles">
@@ -1103,7 +1306,7 @@ $("#stuInput").addEventListener("keydown", e => { if (e.key === "Enter") addStud
 $("#gear").onclick = openSettings;
 $("#tabs").onclick = e => { const b = e.target.closest("button"); if (b) setTab(b.dataset.tab); };
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-toggle],[data-edit],[data-entry],[data-entrydone],[data-stu],[data-selclass],[data-classlog],[data-classedit],[data-student],[data-act]");
+  const el = e.target.closest("[data-toggle],[data-edit],[data-entry],[data-entrydone],[data-stu],[data-selclass],[data-classlog],[data-classedit],[data-student],[data-act],[data-missing],[data-session],[data-handin]");
   if (!el) return;
   const d = el.dataset;
   if (d.toggle) toggleTask(d.toggle);
@@ -1123,6 +1326,15 @@ document.addEventListener("click", e => {
   else if (d.classlog) openClassLog(d.classlog);
   else if (d.classedit) openClassEdit(d.classedit);
   else if (d.student) openStudent(d.student);
+  else if (d.missing) openRecord({ title: d.missing === "all" ? "缺交／補考名單" : (D.classes[d.missing] ? D.classes[d.missing].name : "") + " 缺交名單", text: missingText(d.missing), file: `缺交名單_${rocCompact(todayKey())}` });
+  else if (d.session) openSession(d.sid, d.session);
+  else if (d.handin) {
+    const en = D.entries[d.handin]; if (!en) return;
+    const ds = new Set(en.doneStudents || []); ds.add(d.name);
+    const allDone = (en.students || []).every(x => ds.has(x));
+    put("entries", Object.assign({}, en, { doneStudents: [...ds], done: allDone, doneAt: allDone ? Date.now() : null }));
+    toast(pick(CHEER_TEXT)); openStudent(d.sid);
+  }
   else if (d.act) {
     e.preventDefault();
     const a = d.act;
@@ -1132,6 +1344,10 @@ document.addEventListener("click", e => {
     else if (a === "addclass") openClassEdit(null);
     else if (a === "copyweek") copyText(reportText("week"), "本週回顧已複製");
     else if (a === "copysem") copyText(reportText("sem"), "學期報告已複製");
+    else if (a === "allrecords") {
+      const studs = Object.values(D.students).filter(st => sessions().some(x => x.studentId === st.id)).sort((x, y) => (x.cls || "").localeCompare(y.cls || "") || x.name.localeCompare(y.name, "zh-Hant"));
+      openRecord({ title: "晤談紀錄總表", text: recordText(studs, null, null).split("【學生晤談紀錄】").join("━━━━━━━━━━\n【學生晤談紀錄】").replace(/^━+\n/, ""), file: `晤談紀錄總表_${rocCompact(todayKey())}` });
+    }
   }
 });
 
