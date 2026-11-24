@@ -180,6 +180,7 @@ a{color:var(--accent)}
       <input id="stuInput" placeholder="新增學生（多位用、分開）">
       <button class="btn" id="addStu">新增</button>
     </div>
+    <button class="btn ghost" style="width:100%;margin-top:8px" id="impStu">📥 匯入整班名單（Excel／貼上）</button>
     <div class="hint" style="margin-top:6px">點學生可以記晤談紀錄、看缺交，也能一鍵產出晤談紀錄</div>
   </div>
   <div id="stuList"></div>
@@ -1375,12 +1376,98 @@ function addStudents() {
   if (n) toast(`新增 ${n} 位學生`, "curious");
 }
 
+/* 匯入學生名單 */
+function parseRoster(text, defCls) {
+  const out = [], seen = new Set();
+  const isName = t => /^[一-鿿][一-鿿·．‧]{1,5}$/.test(t) && !/班$|^(男|女|男生|女生|姓名|座號|學號|班級|備註|性別)$/.test(t);
+  const isCls = t => /^\d{3,4}班?$/.test(t) || /^[一-鿿\d]{1,6}班$/.test(t);
+  const isSeat = t => /^\d{1,2}號?$/.test(t) && +t.replace("號", "") > 0;
+  for (const line of String(text || "").split(/\r?\n/)) {
+    const toks = line.split(/[\t,，、;；\s]+/).map(x => x.trim().replace(/^"|"$/g, "")).filter(Boolean);
+    if (!toks.length) continue;
+    let cls = defCls || "", seat = null; const row = [];
+    for (const t of toks) {
+      if (isSeat(t) && !(cls === "" && /^\d{3,4}$/.test(t))) seat = t.replace("號", "");
+      else if (isCls(t)) cls = t.replace(/班$/, "");
+      else if (isName(t)) { row.push({ name: t, seat, cls }); seat = null; }
+    }
+    if (row.length === 1 && !row[0].seat && seat) row[0].seat = seat;
+    for (const r of row) { r.cls = r.cls || cls; const k = r.cls + "|" + r.name; if (!seen.has(k)) { seen.add(k); out.push(r); } }
+  }
+  return out;
+}
+async function xlsxToText(buf) {
+  const u8 = new Uint8Array(buf), dv = new DataView(buf);
+  let eocd = -1; for (let i = u8.length - 22; i >= 0; i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error("zip");
+  const files = {}; let p = dv.getUint32(eocd + 16, true); const n = dv.getUint16(eocd + 10, true);
+  for (let i = 0; i < n; i++) {
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true), el = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+    files[new TextDecoder().decode(u8.slice(p + 46, p + 46 + nl))] = { method, csize, off };
+    p += 46 + nl + el + cl;
+  }
+  const read = async name => {
+    const f = files[name]; if (!f) return "";
+    const lo = f.off + 30 + dv.getUint16(f.off + 26, true) + dv.getUint16(f.off + 28, true);
+    const data = u8.slice(lo, lo + f.csize);
+    if (f.method === 0) return new TextDecoder().decode(data);
+    const ds = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return await new Response(ds).text();
+  };
+  const dp = new DOMParser();
+  const ss = [...dp.parseFromString(await read("xl/sharedStrings.xml") || "<a/>", "text/xml").getElementsByTagName("si")].map(si => [...si.getElementsByTagName("t")].map(t => t.textContent).join(""));
+  const sheetName = Object.keys(files).filter(k => /^xl\/worksheets\/sheet\d+\.xml$/.test(k)).sort()[0];
+  const sh = dp.parseFromString(await read(sheetName), "text/xml");
+  return [...sh.getElementsByTagName("row")].map(r => [...r.getElementsByTagName("c")].map(c => {
+    const v = c.getElementsByTagName("v")[0], t = c.getAttribute("t");
+    if (t === "s") return ss[+(v ? v.textContent : 0)] || "";
+    if (t === "inlineStr") return [...c.getElementsByTagName("t")].map(x => x.textContent).join("");
+    return v ? v.textContent.replace(/\.0+$/, "") : "";
+  }).join("\t")).join("\n");
+}
+function openImport() {
+  openSheet(`<h3>📥 匯入學生名單 <button class="iconbtn" id="x">✕</button></h3>
+    <div class="field"><label>班級（名單裡沒寫班級時用這個）</label><input id="iCls" list="iClsL" placeholder="例：201"><datalist id="iClsL">${classes().map(c => `<option value="${esc(c.name)}">`).join("")}</datalist></div>
+    <div class="field"><label>貼上名單</label><textarea id="iText" rows="7" placeholder="從 Excel／校務系統選取「座號、姓名」兩欄，複製後貼在這裡。&#10;也可以直接打：&#10;1 王小明&#10;2 林小華"></textarea></div>
+    <label class="btn ghost" style="width:100%;display:block;text-align:center;margin-bottom:10px">📄 或選檔案（Excel／CSV）<input type="file" id="iFile" accept=".xlsx,.csv,.txt" style="display:none"></label>
+    <div id="iPrev" class="mini" style="margin-bottom:10px"></div>
+    <button class="btn" style="width:100%" id="iGo">匯入</button>`);
+  $("#x").onclick = closeSheet;
+  const prev = () => {
+    const list = parseRoster($("#iText").value, $("#iCls").value.trim());
+    $("#iGo").textContent = list.length ? `匯入 ${list.length} 位` : "匯入";
+    $("#iPrev").innerHTML = list.length ? `<div style="margin-bottom:4px">看一下對不對：</div>${list.slice(0, 60).map(r => `<span class="chip stu">${r.cls ? esc(r.cls) + " " : ""}${r.seat ? esc(r.seat) + "號 " : ""}${esc(r.name)}</span>`).join("")}${list.length > 60 ? " …" : ""}` : "";
+  };
+  $("#iText").oninput = prev; $("#iCls").oninput = prev;
+  $("#iFile").onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      $("#iText").value = /\.xlsx$/i.test(f.name) ? await xlsxToText(await f.arrayBuffer()) : await f.text();
+      prev();
+      if (!parseRoster($("#iText").value, $("#iCls").value.trim()).length) toast("檔案裡找不到姓名，改用複製貼上試試", "worried");
+    } catch (err) { toast("這個檔案讀不了，請從 Excel 複製貼上", "worried"); }
+  };
+  $("#iGo").onclick = () => {
+    const list = parseRoster($("#iText").value, $("#iCls").value.trim());
+    if (!list.length) { toast("沒有找到姓名", "worried"); return; }
+    let add = 0, upd = 0;
+    for (const r of list) {
+      const ex = Object.values(D.students).find(s => s.name === r.name && (!s.cls || !r.cls || s.cls === r.cls));
+      if (ex) { put("students", Object.assign({}, ex, { cls: r.cls || ex.cls || "", seat: r.seat ? +r.seat : ex.seat || "" })); upd++; }
+      else { put("students", { id: "s" + uid(), name: r.name, cls: r.cls || "", seat: r.seat ? +r.seat : "", note: "", createdAt: Date.now() }); add++; }
+    }
+    closeSheet();
+    toast(`匯入好了：新增 ${add} 位${upd ? "，更新 " + upd + " 位" : ""}`, "proud");
+  };
+}
+
 /* ========== 事件 ========== */
 $("#taskInput").addEventListener("input", updateTaskPreview);
 $("#classInput").addEventListener("input", updateClassPreview);
 $("#addTask").onclick = addTasks;
 $("#addClass").onclick = addClassEntries;
 $("#addStu").onclick = addStudents;
+$("#impStu").onclick = openImport;
 $("#stuInput").addEventListener("keydown", e => { if (e.key === "Enter") addStudents(); });
 $("#gear").onclick = openSettings;
 $("#tabs").onclick = e => { const b = e.target.closest("button"); if (b) setTab(b.dataset.tab); };
