@@ -659,6 +659,19 @@ function taskRow(t, opts = {}) {
 }
 function emptyBox(image, text) { return `<div class="empty"><img src="${img(image)}" alt="">${esc(text)}</div>`; }
 
+const mimiPoses = Object.keys(IMGS).filter(name => !name.endsWith("_r"));
+let mimiDay = "";
+let mimiOffset = 0;
+
+function currentMimi(day) {
+  if (day !== mimiDay) {
+    mimiDay = day;
+    mimiOffset = 0;
+  }
+  const dayNumber = Math.floor(Date.parse(day + "T00:00:00Z") / 86400000);
+  return mimiPoses[(dayNumber + mimiOffset) % mimiPoses.length];
+}
+
 function renderGreet() {
   const h = new Date().getHours(), tk = todayKey();
   const todays = tasks().filter(t => t.day === tk);
@@ -666,17 +679,17 @@ function renderGreet() {
   const left = todays.filter(t => !t.done).length + overdue.length;
   const done = todays.filter(t => t.done).length;
   const total = todays.length + overdue.length;
-  let image = h < 11 ? "morning" : h < 14 ? "noon" : "evening";
+  const image = currentMimi(tk);
   const hello = h < 5 ? "夜深了" : h < 11 ? "早安" : h < 14 ? "午安" : h < 18 ? "下午好" : "晚安";
   let sub;
-  if (total === 0) { sub = "今天還沒有待辦，說一句話就能加 🎙️"; image = "start"; }
-  else if (left === 0) { sub = "今天的事都做完了！咪咪好驕傲 🐾"; image = pick(FINISHED); }
+  if (total === 0) { sub = "今天還沒有待辦，說一句話就能加 🎙️"; }
+  else if (left === 0) { sub = "今天的事都做完了！咪咪好驕傲 🐾"; }
   else sub = `今天還有 <b>${left}</b> 件沒做${overdue.length ? `（其中 ${overdue.length} 件是之前的）` : ""}，咪咪陪你`;
   const pct = total ? Math.round(done / total * 100) : 0;
   const status = (cloudState === "local" && window.claude) ? `<div class="banner">📱 資料目前只存在這個瀏覽器，記得到 ⚙️ 設定定期「複製備份」。</div>`
     : cloudState === "slow" ? `<div class="banner">☁️ 雲端還在連線，先顯示手機裡的資料…</div>` : "";
   const tip = !S().tipDone ? `<div class="banner">⏰ 網頁沒辦法主動跳通知。建議在 iPhone「提醒事項」設每天 ${S().times.join("、")} 重複提醒「看語音待辦」。<a href="#" data-act="tipdone">知道了</a>・<a href="#" data-act="settings">怎麼設</a></div>` : "";
-  $("#greet").innerHTML = `<div class="card greet"><img src="${img(image)}" alt="咪咪"><div style="flex:1">
+  $("#greet").innerHTML = `<div class="card greet"><button type="button" data-act="nextmimi" style="padding:0"><img src="${img(image)}" alt="咪咪"><small style="display:block">點我換一張</small></button><div style="flex:1">
     <div class="big">${esc(S().name)}，${hello}！</div><div class="sub">${sub}</div>
     ${total ? `<div class="ring"><i style="width:${pct}%"></i></div>` : ""}</div></div>${status}${tip}`;
 }
@@ -1512,7 +1525,12 @@ document.addEventListener("click", e => {
   else if (d.act) {
     e.preventDefault();
     const a = d.act;
-    if (a === "overview") setTab("overview");
+    if (a === "nextmimi") {
+      currentMimi(todayKey());
+      mimiOffset = (mimiOffset + 1) % mimiPoses.length;
+      el.querySelector("img").src = img(currentMimi(todayKey()));
+    }
+    else if (a === "overview") setTab("overview");
     else if (a === "settings") openSettings();
     else if (a === "tipdone") setS({ tipDone: true });
     else if (a === "addclass") openClassEdit(null);
