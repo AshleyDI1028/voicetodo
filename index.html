@@ -1018,7 +1018,59 @@ function wordBlob(text) {
     if (/^▍/.test(l)) return `<p style="font-weight:bold;margin-top:10pt">${l}</p>`;
     return l ? `<p style="margin:0 0 2pt 0">${l}</p>` : "<p>&nbsp;</p>";
   }).join("");
-  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><title>紀錄</title></head><body style="font-family:'標楷體','DFKai-SB','PingFang TC',serif;font-size:12pt">${body}</body></html>`;
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><title>紀錄</title></head><body style="font-family:'標楷體','DFKai-SB','PingFang TC',serif;font-size:12pt">${body}<script id="mimi-local-album-v1">
+(() => {
+"use strict";
+const dbName="mimi-private-album-v1";
+let photos=[], urls=[], offset=0, day="", mode="03";
+try { mode=localStorage.getItem("mimi-album-mode")||"03"; } catch(e){}
+function db(){return new Promise((resolve,reject)=>{const q=indexedDB.open(dbName,1);q.onupgradeneeded=()=>q.result.createObjectStore("album");q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error);});}
+async function store(value){const d=await db();return new Promise((resolve,reject)=>{const tx=d.transaction("album","readwrite");tx.objectStore("album").put(value,"photos");tx.oncomplete=()=>{d.close();resolve();};tx.onerror=()=>{d.close();reject(tx.error);};tx.onabort=()=>{d.close();reject(tx.error);};});}
+async function load(){const d=await db();return new Promise((resolve,reject)=>{const q=d.transaction("album").objectStore("album").get("photos");q.onsuccess=()=>{d.close();resolve(q.result||[]);};q.onerror=()=>{d.close();reject(q.error);};});}
+function install(items){urls.forEach(URL.revokeObjectURL);photos=items.sort((a,b)=>a.name.localeCompare(b.name));urls=photos.map(x=>URL.createObjectURL(x.blob));offset=0;draw();}
+async function unzip(file){
+ if(file.size>15*1024*1024)throw Error("檔案過大，請使用語音待辦專用相簿 ZIP");
+ const b=await file.arrayBuffer(),v=new DataView(b),u=new Uint8Array(b),out=[];let p=0;const names=new Set();
+ while(p+30<=v.byteLength && v.getUint32(p,true)===0x04034b50){
+  const flags=v.getUint16(p+6,true),method=v.getUint16(p+8,true),size=v.getUint32(p+18,true),nl=v.getUint16(p+26,true),xl=v.getUint16(p+28,true),start=p+30+nl+xl;
+  if(flags&9 || start+size>u.length)throw Error("請使用語音待辦專用相簿 ZIP");
+  const name=new TextDecoder().decode(u.subarray(p+30,p+30+nl));
+  if(/^(01|02|03)\/(0[1-9]|10)\.jpg$/.test(name)){
+   if(method!==0||size>1000000||names.has(name)||u[start]!==255||u[start+1]!==216)throw Error("相簿格式不符");
+   names.add(name);out.push({name,blob:new Blob([u.slice(start,start+size)],{type:"image/jpeg"})});
+  }
+  p=start+size;
+ }
+ if(out.length!==30)throw Error("相簿應包含原照、插畫與Q版各10張");
+ return out;
+}
+function draw(){
+ const greet=document.querySelector("#greet"),card=greet?.querySelector(".card.greet"),button=card?.querySelector('[data-act="nextmimi"]'),im=button?.querySelector("img");if(!card||!im)return;
+ let controls=card.querySelector(".mimi-private-controls");
+ if(!controls){
+  controls=document.createElement("div");controls.className="mimi-private-controls";controls.style.cssText="font-size:12px;display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:8px";
+  const label=document.createElement("label");label.textContent="咪咪相簿：";
+  const select=document.createElement("select");select.setAttribute("aria-label","咪咪相簿風格");for(const [v,t] of [["03","Q版"],["02","插畫"],["01","原始照片"],["all","全部輪替"]]){const o=document.createElement("option");o.value=v;o.textContent=t;select.append(o);}select.value=mode;select.style.cssText="font-size:14px;max-width:120px";
+  select.addEventListener("change",()=>{mode=select.value;offset=0;try{localStorage.setItem("mimi-album-mode",mode);}catch(e){}draw();});
+  const input=document.createElement("input");input.type="file";input.accept=".zip,application/zip";input.style.display="none";
+  const imp=document.createElement("button");imp.type="button";imp.textContent="匯入相簿";imp.style.cssText="font-size:13px;padding:4px 7px;border:1px solid #e0b788;border-radius:8px;background:#fff7ea;color:#604225";imp.addEventListener("click",()=>input.click());
+  const info=document.createElement("small");info.className="mimi-album-count";info.style.flexBasis="100%";
+  input.addEventListener("change",async()=>{if(!input.files[0])return;imp.disabled=true;try{const items=await unzip(input.files[0]);await store(items);install(items);}catch(e){alert("相簿匯入失敗："+e.message);}finally{imp.disabled=false;input.value="";}});
+  controls.append(label,select,imp,input,info);card.querySelector("div[style='flex:1']")?.append(controls);if(!controls.isConnected)card.append(controls);
+ }
+ const items=photos.map((x,i)=>({x,i})).filter(({x})=>mode==="all"||x.name.startsWith(mode+"/"));
+ const info=controls.querySelector(".mimi-album-count");
+ if(!items.length){info.textContent="尚未匯入，原有咪咪造型仍可使用。";return;}
+ const now=new Date(),key=now.getFullYear()+"-"+now.getMonth()+"-"+now.getDate();if(day!==key){day=key;offset=0;}
+ const n=Math.floor(Date.UTC(now.getFullYear(),now.getMonth(),now.getDate())/86400000);
+ im.src=urls[items[(n+offset)%items.length].i];im.style.objectFit="contain";info.textContent="本機相簿 "+photos.length+" 張・點咪咪換圖";
+}
+document.addEventListener("click",e=>{if(photos.length&&e.target.closest("#greet [data-act='nextmimi']")){e.preventDefault();e.stopImmediatePropagation();offset++;draw();}},true);
+const greet=document.querySelector("#greet");if(greet)new MutationObserver(draw).observe(greet,{childList:true});
+load().then(install).catch(()=>draw());draw();
+})();
+</script>
+</body></html>`;
   return new Blob(["﻿", html], { type: "application/msword" });
 }
 async function downloadWord(text, name) {
