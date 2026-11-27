@@ -1132,6 +1132,7 @@ function openTask(id) {
     </div>
     ${rule ? `<button class="btn danger" style="width:100%;margin-top:10px" id="eStop">停止這個重複事項</button>` : ""}`);
   $("#x").onclick = closeSheet;
+  attachArchive($("#sheet"),"📄 匯出這筆待辦",()=>archiveOut("待辦紀錄",archiveTask(D.tasks[id]||t),()=>openTask(id)));
   const dl = bindSw("eDl");
   $("#eTags").onclick = e => { const b = e.target.closest("button"); if (b) b.classList.toggle("on"); };
   $("#eSave").onclick = () => {
@@ -1177,6 +1178,7 @@ function openEntry(id) {
     <button class="btn" style="width:100%" id="nSave">儲存</button>
     <div class="two" style="margin-top:10px"><button class="btn ghost" id="nDone">${e.done ? "改回未完成" : "標記完成"}</button><button class="btn danger" id="nDel">刪除</button></div>`);
   $("#x").onclick = closeSheet;
+  attachArchive($("#sheet"),"📄 匯出這筆班級紀錄",()=>archiveOut("班級紀錄",archiveEntry(D.entries[id]||e),()=>openEntry(id)));
   $("#nSave").onclick = () => {
     const students = namesFrom($("#nStu").value);
     put("entries", Object.assign({}, e, { classId: $("#nClass").value, kind: $("#nKind").value, title: $("#nTitle").value.trim() || e.title, day: $("#nDay").value || e.day,
@@ -1193,6 +1195,7 @@ function openClassLog(cid) {
     ${ents.length ? `<div class="card">${ents.map(e => `<div class="item ${e.done ? "done" : ""}"><div class="body" data-entry="${e.id}"><div class="t">${KIND[e.kind].icon} ${KIND[e.kind].label}：${esc(e.title)}</div>
       <div><span class="chip">${esc(dayLabel(e.day, false))}</span>${(e.students || []).map(s => `<span class="chip stu ${(e.doneStudents || []).includes(s) ? "off" : ""}">${esc(s)}</span>`).join("")}</div></div></div>`).join("")}</div>` : emptyBox("empty", "還沒有紀錄")}`);
   $("#x").onclick = closeSheet;
+  attachArchive($("#sheet"),"📄 匯出本班全部紀錄",()=>archiveOut(c.name+" 班級紀錄",ents.slice().sort(archiveSort).map(e=>archiveEntry(e)).join("\n\n"),()=>openClassLog(cid)));
 }
 function openClassEdit(cid) {
   const c = cid ? D.classes[cid] : null;
@@ -1235,6 +1238,7 @@ function openStudent(sid) {
     <div class="field" style="margin-top:12px"><label>備註（自動儲存，例如家長聯絡方式）</label><textarea id="sNote" rows="3">${esc(s.note || "")}</textarea></div>
     <div class="two" style="margin-top:12px"><button class="btn ghost" id="sRen">✏️ 編輯資料</button><button class="btn danger" id="sDel">刪除學生</button></div>`);
   $("#x").onclick = closeSheet;
+  attachArchive($("#sheet"),"📄 匯出學生完整歷史（含已交作業）",()=>archiveOut(s.name+" 完整紀錄",archiveStudent(D.students[sid]||s),()=>openStudent(sid)));
   $("#sAdd").onclick = () => openSession(sid);
   $("#sMiss").onclick = () => openMissingAdd(sid, () => openStudent(sid));
   $("#sOut").onclick = () => {
@@ -1572,6 +1576,52 @@ async function initDictation() {
   } catch (e) {}
 }
 
+/* ========== 本機紀錄匯出中心 ========== */
+function archiveDate(d){return d?String(d):"未設定";}
+function archiveTask(t){return [archiveDate(t.day)+(t.time!=null?" "+fmtTime(t.time):"")+"｜"+(t.done?"已完成":"未完成")+"｜"+t.title,t.student?"學生："+t.student:"",t.tags?.length?"分類："+t.tags.join("、"):"",t.deadline?"截止事項":"",t.note?"備註："+t.note:"",t.doneAt?"完成時間："+new Date(t.doneAt).toLocaleString("zh-TW"):""].filter(Boolean).join("\n");}
+function archiveEntry(e,name){const assigned=e.students||[],done=e.doneStudents||[],who=name?[name]:assigned;return [archiveDate(e.day)+"｜"+(e.quick?"各科缺交":(KIND[e.kind]?.label||e.kind))+"｜"+e.title, "班級："+(D.classes[e.classId]?.name||Object.values(D.students).find(s=>s.name===who[0])?.cls||"未指定"),"狀態："+(name?(e.done||done.includes(name)?"已完成":"未完成"):(e.done?"已完成": "未完成")),who.length?"學生："+who.map(n=>n+"（"+(e.done||done.includes(n)?"已完成":"未完成")+"）").join("、"):"",e.note?"備註："+e.note:"",e.doneAt?"完成時間："+new Date(e.doneAt).toLocaleString("zh-TW"):""].filter(Boolean).join("\n");}
+function archiveSort(a,b){return (a.day||"").localeCompare(b.day||"")||(a.createdAt||0)-(b.createdAt||0);}
+function archiveStudent(s){const ss=sessions().filter(x=>x.studentId===s.id).sort(archiveSort),es=Object.values(D.entries).filter(e=>(e.students||[]).includes(s.name)).sort(archiveSort),ts=tasks().filter(t=>t.student===s.name).sort(archiveSort);return [s.name+"｜"+(s.cls||"未分班")+"｜"+(s.seat?s.seat+"號":""),s.note?"備註："+s.note:"","【晤談紀錄】",ss.map(x=>sessionBlock(x)).join("\n")||"無","【班級／缺交／補考歷史】",es.map(e=>archiveEntry(e,s.name)).join("\n\n")||"無","【相關待辦】",ts.map(archiveTask).join("\n\n")||"無"].filter(Boolean).join("\n");}
+function archiveOut(title,text,back){openRecord({title,text:"【"+title+"】\n產出日期："+todayKey()+"\n\n"+(text||"目前沒有紀錄。"),file:title+"_"+todayKey()},back);}
+function archiveCenter(defaultKind="all"){
+  openSheet('<h3>📁 紀錄匯出中心 <button class="iconbtn" id="x">✕</button></h3><div class="hint">資料僅在裝置內整理。匯出的學生晤談及個資請妥善保管。</div><div class="field"><label>紀錄種類</label><select id="arKind"><option value="all">全部紀錄</option><option value="sessions">學生晤談</option><option value="missing">缺交／補考／訂正（含已完成）</option><option value="entries">班級紀錄（進度、考試等）</option><option value="tasks">待辦事項</option><option value="students">學生基本資料</option><option value="week">本週回顧</option><option value="semester">學期工作報告</option></select></div><div class="field"><label>班級（選填）</label><select id="arClass"><option value="">全部</option>'+[...new Set([...classes().map(c=>c.name),...Object.values(D.students).map(s=>s.cls).filter(Boolean)])].sort().map(n=>'<option value="'+esc(n)+'">'+esc(n)+'</option>').join("")+'</select></div><div class="field"><label>學生（選填）</label><select id="arStudent"><option value="">全部</option>'+Object.values(D.students).sort((a,b)=>a.name.localeCompare(b.name,"zh-Hant")).map(s=>'<option value="'+esc(s.id)+'">'+esc((s.cls||"")+" "+s.name)+'</option>').join("")+'</select></div><div class="two"><div class="field"><label>起日（選填）</label><input type="date" id="arFrom"></div><div class="field"><label>迄日（選填）</label><input type="date" id="arTo"></div></div><div class="field"><label>完成狀態（待辦／班級紀錄）</label><select id="arStatus"><option value="">全部（含歷史）</option><option value="open">未完成</option><option value="done">已完成</option></select></div><button class="btn" style="width:100%" id="arGo">預覽／複製／匯出</button>');
+  $("#x").onclick=closeSheet;$("#arKind").value=defaultKind;
+  $("#arGo").onclick=()=>{
+    const k=$("#arKind").value,cl=$("#arClass").value,st=D.students[$("#arStudent").value],from=$("#arFrom").value,to=$("#arTo").value,status=$("#arStatus").value;
+    if(from&&to&&from>to){alert("起日不可晚於迄日");return;}
+    const dateOK=x=>(!from||x.day&&x.day>=from)&&(!to||x.day&&x.day<=to);
+    const stuOK=s=>(!cl||s.cls===cl)&&(!st||s.id===st.id);
+    const studs=Object.values(D.students).filter(stuOK);
+    const names=new Set(studs.map(s=>s.name));
+    const stateOK=(done)=>!status||(status==="done"?!!done:!done);
+    const ts=tasks().filter(t=>dateOK(t)&&stateOK(t.done)&&(!cl&&!st||names.has(t.student))).sort(archiveSort);
+    const es=Object.values(D.entries).filter(e=>dateOK(e)&&(!cl||D.classes[e.classId]?.name===cl||(e.students||[]).some(n=>names.has(n)))&&(!st||(e.students||[]).includes(st.name))&&stateOK(st?(e.done||(e.doneStudents||[]).includes(st.name)):e.done)).sort(archiveSort);
+    const ss=sessions().filter(x=>dateOK(x)&&studs.some(s=>s.id===x.studentId)).sort(archiveSort);
+    const out=[];
+    const section=(label,arr)=>out.push("【"+label+"】（"+arr.length+" 筆）\n"+(arr.join("\n\n")||"無"));
+    if(k==="all"||k==="students")section("學生基本資料",studs.map(s=>s.name+"｜"+(s.cls||"未分班")+"｜"+(s.seat||"")+"號"+(s.note?"\n備註："+s.note:"")));
+    if(k==="all"||k==="sessions")section("學生晤談",ss.map(x=>{const s=D.students[x.studentId];return (s?.name||"未知學生")+"｜"+(s?.cls||"")+"\n"+sessionBlock(x);}));
+    if(k==="all"||k==="entries"||k==="missing")section(k==="missing"?"缺交／補考／訂正歷史":"班級紀錄",es.filter(e=>k!=="missing"||MISSING_KINDS.includes(e.kind)).map(e=>archiveEntry(e,st?.name)));
+    if(k==="all"||k==="tasks")section("待辦事項",ts.map(archiveTask));
+    if(k==="week"||k==="semester"){if(cl||st||from||to||status){alert("週回顧／學期報告使用固定期間，請清空篩選，或改選其他紀錄種類。");return;}out.push(reportText(k==="week"?"week":"sem"));}
+    const title=$("#arKind").selectedOptions[0].textContent;
+    archiveOut(title,out.join("\n\n━━━━━━━━━━\n\n"),()=>archiveCenter(k));
+  };
+}
+function archiveButton(parent,label,fn){if(!parent)return;const b=document.createElement("button");b.type="button";b.className="btn ghost";b.style.cssText="width:100%;margin:8px 0";b.textContent=label;b.onclick=fn;parent.append(b);}
+function wireArchive(){
+ const tabs=[["tab-today","tasks"],["tab-overview","tasks"],["tab-classes","entries"],["tab-students","sessions"],["tab-review","week"]];
+ for(const [id,k] of tabs){const p=document.getElementById(id);if(p&&!p.querySelector(".archive-launch")){const b=document.createElement("button");b.type="button";b.className="btn ghost archive-launch";b.style.cssText="width:100%;margin:6px 0 10px";b.textContent="📁 複製／匯出紀錄";b.onclick=()=>archiveCenter(k);p.prepend(b);}}
+}
+function wireArchiveSheet(){
+ const p=$("#sheet");if(!p||!p.children.length||p.querySelector(".archive-local"))return;
+ const marker=document.createElement("div");marker.className="archive-local";
+ if($("#rText")){archiveButton(marker,"💾 儲存純文字 TXT",()=>{const txt=$("#rText").value;const file=new File(["\uFEFF",txt],"紀錄_"+todayKey()+".txt",{type:"text/plain;charset=utf-8"});if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file]}).catch(e=>{if(e.name!=="AbortError")saveArchiveFile(file);});}else saveArchiveFile(file);});}
+ if(marker.children.length)p.append(marker);
+}
+function saveArchiveFile(file){const a=document.createElement("a");a.href=URL.createObjectURL(file);a.download=file.name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);}
+function attachArchive(parent,label,fn){archiveButton(parent,label,fn);}
+
 /* ========== 啟動 ========== */
 loadLocal();
 ensureSeeds();
@@ -1583,6 +1633,8 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) { ge
 setInterval(() => { if (!document.hidden && $("#overlay").classList.contains("on") === false) render(); }, 60000);
 initCloud();
 initDictation();
+wireArchive();
+new MutationObserver(wireArchiveSheet).observe($("#sheet"),{childList:true});
 try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
 if ("serviceWorker" in navigator) { window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {})); }
 </script>
